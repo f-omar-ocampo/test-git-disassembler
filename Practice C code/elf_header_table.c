@@ -11,9 +11,13 @@
 #include <unistd.h>
 #include <bsd/vis.h>
 
-void print_ptype(size_tpt)
+void print_ptype(size_t pt)
 {
     char *s;
+// Define tutorial: //http://www.zator.com/Cpp/E4_9_10b.htm
+//basically, V is going to be replaced by the string
+//sent to C(word) and using ## is going to concatenate both strings,
+//before and after the ##
 #define C(V) case PT_##V: s = #V; break
     switch (pt)
     {
@@ -25,11 +29,11 @@ void print_ptype(size_tpt)
         C(SHLIB);
         C(PHDR);
         C(TLS);
-        C(SUNW_UNWIND);
+       // C(SUNW_UNWIND); These are suppose to be in elf.h, need to look newest version
         C(SUNWBSS);
         C(SUNWSTACK);
-        C(SUNWDTRACE);
-        C(SUNWCAP);
+        //C(SUNWDTRACE);
+       // C(SUNWCAP);
     default:
         s="unknown";
         break;
