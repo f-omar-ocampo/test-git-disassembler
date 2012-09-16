@@ -24,13 +24,16 @@ Gtest will be used. Two different gtest binaries will be created: features and s
 
 FEATURE TESTING:
 
-TC_DA_OpenBinFile
+TC_DA_OpenBinFile -DONE- Also sent a python file to make disassembler ignore such files.
 	Information: Disassemble must be able to open binary or object files, ignore the rest of the files.
-TC_DA_Negative_SendNonExistanceFile
+
+TC_DA_Negative_SendNonExistanceFile -DONE-
 	Information: Sent to disassemble a file that does not exists, disassemble must show error and exit.
-TC_DA_PrintElf
-	Information: Disassemble must print the ELF headers of a file (Default ON)
-TC_DA_NoPrintElf
+
+TC_DA_PrintElf -DONE-
+	Information: Disassemble must print the ELF headers of a binary file (Default ON)
+
+TC_DA_NoPrintElf -DONE-
 	Information: Disassemble must have an option to print ELF headers of a file. Option to not print will be send, ELF headers must not be printed.
 TC_DA_GenInst
 	Information: Disassemble output should have at least one General Instruction decoded

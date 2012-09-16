@@ -11,6 +11,7 @@
 #include <libelf.h>
 
 #include "pugixml/pugixml.cpp"
+//#include <string>
 #include <sysexits.h>
 #include <unistd.h>
 
@@ -30,6 +31,44 @@ void print_ptype(size_t pt);
 void read_elf_program_header(char *file_name);
 void elf_check_up(char *file_name);
 int xml_test();
+void is_binary(string file);
+
+void is_binary(string file){
+	ifstream my_dataFile;
+	string cmd = "file -b -e soft ";
+	string output = "";
+	char *file_chr = (char*)file.c_str();
+	cmd = cmd + file;
+	cmd = cmd + " > file_type.txt 2>&1";
+	char *command = (char*)cmd.c_str();
+	size_t found;
+	
+	ifstream check_file;
+	check_file.open(file_chr);
+	if (check_file.is_open()){
+	system(command);
+	my_dataFile.open("./file_type.txt");
+	
+	getline(my_dataFile, output);
+	found = output.find("data");
+	
+	if (found == 0)
+		{
+			cout << "Detected binary/object file" << endl;
+		}
+	else{
+			cout << "Detected NON binary/object file" << endl;
+			exit(-1);
+		}
+	my_dataFile.close();
+		
+		}
+	else{
+		cout << "File: " <<  file <<" provided does not exists" << endl;
+		exit(-1);
+		}
+
+	}
 
 void check_arguments(int argc, char *argv[])
 {
@@ -507,7 +546,6 @@ void elf_check_up(char *file_name)
     size_t n;
     Elf_Kind ek;
     GElf_Ehdr ehdr;
-
     fd = open(file_name, O_RDONLY, 0);
     if (fd < 0)
     {
@@ -655,14 +693,56 @@ int xml_test()
 
 int main(int argc, char *argv[])
 {
+	extern char *optarg;
+	extern int optind, optopt, opterr;
+
 	unsigned long file_size_bytes = 0;
     unsigned long file_size_kb = 0;
+	char *filename;
+
+//while ((c = getopt(argc, argv, ":abf:")) != -1) {
+    //switch(c) {
+    //case 'a':
+        //printf("a is set\n");
+        //break;
+    //case 'b':
+        //printf("b is set\n");
+        //break;
+    //case 'f':
+        //filename = optarg;
+        //printf("filename is %s\n", filename);
+        //break;
+    //case ':':
+        //printf("-%c without filename\n", optopt);
+        //break;
+    //case '?':
+        //printf("unknown arg %c\n", optopt);
+        //break;
+    //}
 
     cout << "*****Ocampo Coronado, Francisco Omar A00354312******" << endl;
+    int opt = 0;
+    bool show_elf = true;
+	while( ((opt = getopt(argc, argv, "nf:")) != -1)) 
+    {
+        switch( opt ) 
+        { 
+			case 'n': 
+				show_elf = false;
+				cout << "Not showing elf headers" << endl;
+				break;
+			case 'f':
+				filename = optarg;
+				cout << "File to be analyzed: " << filename << endl;
+		}
+	}
+						
+    
 	//xml_test();
 	//exit(0);
     // argv[1] = "./disassembler"; //hard coded for now.
     //check_arguments(argc, argv);
+    is_binary(filename);
     //file_size_bytes = get_file_size(argv[1]);
     //file_size_kb = file_size_bytes/1024;
 
@@ -673,9 +753,13 @@ int main(int argc, char *argv[])
 
     //print_binary_file(argv[1], file_size_bytes);
     //print_binary_file_hex(argv[1], file_size_bytes);
-    elf_check_up(argv[1]);
-    read_file_type_elf(argv[1]);
-    read_elf_exe_header(argv[1]);
-    read_elf_program_header(argv[1]);
+    if (show_elf) 
+    {
+    elf_check_up(filename);
+    read_file_type_elf(filename);
+    read_elf_exe_header(filename);
+    read_elf_program_header(filename);
+	}
+
     exit(0);
 }

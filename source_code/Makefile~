@@ -1,7 +1,7 @@
 # Makefile for disassembler proyect
 # Author: Ocampo Coronado Francisco Omar A00354312
 
-CC=g++
+CC=gcc
 CFLGAS=-I
 
 all: main gcov hello_world
@@ -16,7 +16,7 @@ gcov: disassembler.c
 
 #These are the examples to be used by disassemble
 hello_world: examples_to_read/hello_world.cpp
-	$(CC) examples_to_read/hello_world.cpp -o examples_to_read/hello
+	g++ examples_to_read/hello_world.cpp -o examples_to_read/hello
 
 #disassembler: 
 
