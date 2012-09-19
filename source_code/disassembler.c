@@ -1,4 +1,5 @@
 #include <bsd/vis.h>
+#include <typeinfo>
 #include <cstdio>
 #include <cstdlib>
 #include <err.h>
@@ -6,100 +7,224 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-
 #include <gelf.h>
 #include <libelf.h>
-
 #include "pugixml/pugixml.cpp"
-//#include <string>
 #include <sysexits.h>
 #include <unistd.h>
 
 using namespace std;
 using namespace pugi;
 
-
-void check_arguments(int argc, char *argv[]);
 FILE* open_file(char *file_name, const char *mode);
+void is_binary(string file);
 unsigned long get_file_size(char *file_name);
 void file_size_limits(unsigned long kb);
+
 void print_binary_file(char *file_name, unsigned long file_size);
 void print_binary_file_hex(char *file_name, unsigned long file_size);
+
+void elf_check_up(char *file_name);
 void read_file_type_elf(char *file_name);
 void read_elf_exe_header(char *file_name);
 void print_ptype(size_t pt);
 void read_elf_program_header(char *file_name);
-void elf_check_up(char *file_name);
-int xml_test();
-void is_binary(string file);
 
-void is_binary(string file){
-	ifstream my_dataFile;
-	string cmd = "file -b -e soft ";
-	string output = "";
-	char *file_chr = (char*)file.c_str();
-	cmd = cmd + file;
-	cmd = cmd + " > file_type.txt 2>&1";
-	char *command = (char*)cmd.c_str();
-	size_t found;
-	
-	ifstream check_file;
-	check_file.open(file_chr);
-	if (check_file.is_open()){
-	system(command);
-	my_dataFile.open("./file_type.txt");
-	
-	getline(my_dataFile, output);
-	found = output.find("data");
-	
-	if (found == 0)
-		{
-			cout << "Detected binary/object file" << endl;
-		}
-	else{
-			cout << "Detected NON binary/object file" << endl;
-			exit(-1);
-		}
-	my_dataFile.close();
-		
-		}
-	else{
-		cout << "File: " <<  file <<" provided does not exists" << endl;
-		exit(-1);
-		}
-
-	}
-
-void check_arguments(int argc, char *argv[])
+struct Opcode_info
 {
     /*
-    Function to handle arguments received by the program.
-    Planning to use getops for this.
-
-    For now, it receives one parameter, the name of the file to be analyzed
-    */
-    if(argc==2)
+     * Possible elements of an opcode
+     * All the information will be get from the XML
+     * Some parameters may be in blank because opcodes does not have such
+     * element on it.
+     */
+    struct entry_attributes
     {
-        cout << "The argument supplied is " << argv[1] << endl;
-    }
-    else if (argc > 2)
-    {
-        cout << "Too many arguments received." << endl;
-        cout << "Please provide only the name of a file." << endl;
-    }
+        string direction;
+        string op_size;
+        string r;
+        string lock;
+        string attr;
+        string mode;
+    } entry_attr;
 
-    cout << "The name of the file is " << argv[1] << endl;
+    struct dest_attributes
+    {
+        // Attributes of the node
+        string nr;
+        string group;
+        string type;
+        string address;
+        string displayed;
+        string depend;
+        // Direct value of node
+        string attr;
+        // Childs of the node
+        string a;
+        string t;
+    } dest_attr;
+
+    struct source_attributes
+    {
+        string nr;
+        string group;
+        string type;
+        string address;
+        string displayed;
+        string a;
+        string t;
+        string attr;
+    } src_attr;
+
+    string mnemonic; //All opcodes have mnemonics
+    string prefix; //Prefix of the opcode, is always present
+    string sec_opcode; //Secondary opcode
+    string proc_start; // opcode's introductory processor
+    string proc_end; //opcode's terminating processor
+    string instr_ext; // instruction extension, which the opcode belongs to -> #PCDATA
+
+    //main group, sub-group, sub-sub-group: ....Group of what?, seriously :/
+    string group1;
+    string group2;
+    string group3;
+
+    // Like in MOV mnemonics
+    string dst; //Destination
+    string src; //Source: This may have several values...TODO
+
+    //flags in rFlags register
+    string test_f;  //Tested flag
+    string modif_f; //Modified flag
+    string def_f;   //Defined flag
+    string undef_f; //Undefined flag
+    string f_vals;  //Flag values in rFlags register;
+
+    //Flags in x87 fpu flags
+    string test_f_fpu;
+    string modif_f_fpu;
+    string def_f_fpu;
+    string undef_f_fpu;
+    string f_vals_fpu;
+
+    //Notes...
+    string note;
+} myOpcode;
+
+void print_opcode_struct(struct Opcode_info opcode)
+{
+    cout << "Mnemonic: " << opcode.mnemonic << endl;
+
+    cout << "Entry values: \n\t Direction: " << opcode.entry_attr.direction;
+    cout << "\t Op size: " << opcode.entry_attr.op_size;
+    cout << "\t R: " << opcode.entry_attr.r;
+    cout << "\t Lock: " << opcode.entry_attr.lock;
+    cout << "\t Mode: " << opcode.entry_attr.mode;
+    cout << "\t Attribute: " << opcode.entry_attr.attr << endl;
+
+    cout << "Dest values: \n\t NR: " << opcode.dest_attr.nr;
+    cout << "\t Group: " << opcode.dest_attr.group;
+    cout << "\t Type: " << opcode.dest_attr.type;
+    cout << "\t Address: " << opcode.dest_attr.address;
+    cout << "\t Displayed: " << opcode.dest_attr.displayed;
+    cout << "\t Depend: " << opcode.dest_attr.depend;
+    cout << "\t A: " << opcode.dest_attr.a ;
+    cout << "\t T:" << opcode.dest_attr.t;
+    cout << "\t Attribute: " << opcode.dest_attr.attr << endl;
+
+    cout << "Source values: " << endl;
+    cout << "\t Nr: " << opcode.src_attr.nr;
+    cout << "\t Group: " << opcode.src_attr.group;
+    cout << "\t Type: " << opcode.src_attr.type;
+    cout << "\t Address :" << opcode.src_attr.address;
+    cout << "\t Displayed: " << opcode.src_attr.displayed;
+    cout << "\t A: " << opcode.src_attr.a;
+    cout << "\t T:" << opcode.src_attr.t;
+    cout << "\t Attribute: " << opcode.src_attr.attr << endl;
+
+    cout << "Prefix: " << opcode.prefix << endl;
+    cout << "Secondary opcode: " << opcode.sec_opcode << endl;
+    cout << "Proc start: " << opcode.proc_start << endl; //Intro_proc
+    cout << "Term processor: " << opcode.proc_end << endl;
+    cout << "Instruction extension: " << opcode.instr_ext << endl;
+
+    cout << "Groups: " << endl;
+    cout << "\t Main group: " << opcode.group1;
+    cout << "\t Sub-group: " << opcode.group2;
+    cout << "\t Sub-sub-group: " << opcode.group3 << endl;
+
+    cout << "Destination: " << opcode.dst << endl;
+    cout << "Source(s): " << opcode.src << endl;
+
+    cout << "Flags: " << endl;
+    cout << "\t Tested flag: " << opcode.test_f;
+    cout << "\t Modified flag: " << opcode.modif_f;
+    cout << "\t Defined flag: " << opcode.def_f;
+    cout << "\t Undefined flag: " << opcode.undef_f;
+    cout << "\t rFlag reg value: " << opcode.f_vals << endl;
+
+    cout << "FPU Flags: " << endl;
+    cout << "\t Tested FPU flag: " << opcode.test_f_fpu;
+    cout << "\t Modified FPU flag: " << opcode.modif_f_fpu;
+    cout << "\t Defined FPU flag: " << opcode.def_f_fpu;
+    cout << "\t Undefined FPU flag: " << opcode.undef_f_fpu;
+    cout << "\t rFlag reg FPU value: " << opcode.f_vals_fpu << endl;
+
+    cout << "Notes: " << opcode.note << endl;
+
 }
+
+
+void is_binary(string file)
+{
+    ifstream my_dataFile;
+    string cmd = "file -b -e soft ";
+    string output = "";
+    char *file_chr = (char*)file.c_str();
+    cmd = cmd + file;
+    cmd = cmd + " > file_type.txt 2>&1";
+    char *command = (char*)cmd.c_str();
+    size_t found;
+
+    ifstream check_file;
+    check_file.open(file_chr);
+    if (check_file.is_open())
+    {
+        system(command);
+        my_dataFile.open("./file_type.txt");
+
+        getline(my_dataFile, output);
+        found = output.find("data");
+
+        if (found == 0)
+        {
+            cout << "Detected binary/object file" << endl;
+        }
+        else
+        {
+            cout << "Detected NON binary/object file" << endl;
+            exit(-1);
+        }
+        my_dataFile.close();
+
+    }
+    else
+    {
+        cout << "File: " <<  file <<" provided does not exists" << endl;
+        exit(-1);
+    }
+
+}
+
 
 FILE* open_file(char *file_name, const char *mode)
 {
     /*
-    	Received parameters: file_name and mode.
-    	Example: open_file("my_file.txt", "r");
-    	Opens a file a returns the pointer to the file.
-    	Please note this function does not close the file.
-    	The system will exit from the program if there is a problem
-    	reading from the file.
+        Received parameters: file_name and mode.
+        Example: open_file("my_file.txt", "r");
+        Opens a file a returns the pointer to the file.
+        Please note this function does not close the file.
+        The system will exit from the program if there is a problem
+        reading from the file.
     */
     FILE *fp;
     fp = fopen(file_name, mode);
@@ -210,7 +335,7 @@ void print_binary_file_hex(char *file_name, unsigned long file_size)
     unsigned char   buffer[16]; //Reduce this to 15?
 
     fp = open_file(file_name, "rb");
-    
+
     /*
     While we can keep reading from the file
     We are going to read 16 bytes (Hex) per cycle
@@ -238,15 +363,15 @@ void print_binary_file_hex(char *file_name, unsigned long file_size)
             counter = counter + 1;
             if (counter <= byte_counter)
             {
-				//cout << setfill('0') << setw(2) << hex << *buf << " "; // why is not working??!
+                //cout << setfill('0') << setw(2) << hex << *buf << " "; // why is not working??!
                 printf("%02X ", *buf);
                 *buf = *buf++;
             }
         }
- 
+
         /*
           Print the printable characters, or a period if unprintable.
-          
+
         */
         printf (" " );
         counter = 0;
@@ -261,7 +386,7 @@ void print_binary_file_hex(char *file_name, unsigned long file_size)
                 }
                 else
                 {
-					cout << buffer[n];
+                    cout << buffer[n];
                 }
             }
         }
@@ -269,7 +394,7 @@ void print_binary_file_hex(char *file_name, unsigned long file_size)
     }
     printf("End of file\n");
     rewind(fp);
-    fclose(fp); 
+    fclose(fp);
 }
 
 void read_file_type_elf(char *file_name)
@@ -311,9 +436,9 @@ void read_file_type_elf(char *file_name)
     default:
         type_elf ="unrecognized";
     }
-    
+
     cout << "File name: "<< file_name << "\t Elf type: " << type_elf << endl;
- 
+
     for(i=0; i<=EI_ABIVERSION; i++)
     {
         vis(bytes, id[i], VIS_WHITE, 0);
@@ -322,44 +447,44 @@ void read_file_type_elf(char *file_name)
 
     printf("\n");
 
-    
-    #define	PRINT_FMT	"   %-20s 0x%jx\n"
-    #define	PRINT_FIELD(N)	do{\
-    		(void)printf(PRINT_FMT, #N, (uintmax_t)ehdr.N);\
+
+#define PRINT_FMT   "   %-20s 0x%jx\n"
+#define PRINT_FIELD(N)  do{\
+            (void)printf(PRINT_FMT, #N, (uintmax_t)ehdr.N);\
     }while(0)
 
     //print ELF executable header
-        PRINT_FIELD(e_type);
-        PRINT_FIELD(e_machine);
-        PRINT_FIELD(e_version);
-        PRINT_FIELD(e_entry);
-        PRINT_FIELD(e_phoff);
-        PRINT_FIELD(e_shoff);
-        PRINT_FIELD(e_flags);
-        PRINT_FIELD(e_ehsize);
-        PRINT_FIELD(e_phentsize);
-        PRINT_FIELD(e_shentsize);
+    PRINT_FIELD(e_type);
+    PRINT_FIELD(e_machine);
+    PRINT_FIELD(e_version);
+    PRINT_FIELD(e_entry);
+    PRINT_FIELD(e_phoff);
+    PRINT_FIELD(e_shoff);
+    PRINT_FIELD(e_flags);
+    PRINT_FIELD(e_ehsize);
+    PRINT_FIELD(e_phentsize);
+    PRINT_FIELD(e_shentsize);
 
 
-        if(elf_getshdrnum(e,&n)!= 0)
-        {
-            errx(EX_SOFTWARE, "getshdrnum() failed: %s.", elf_errmsg(-1));
-        }
+    if(elf_getshdrnum(e,&n)!= 0)
+    {
+        errx(EX_SOFTWARE, "getshdrnum() failed: %s.", elf_errmsg(-1));
+    }
 
-        (void)printf(PRINT_FMT, "(shnum)", (uintmax_t)n);
-        if(elf_getshdrstrndx(e,&n)!=0)
-        {
-            errx(EX_SOFTWARE, "getshdrstrndx() failed: %s.", elf_errmsg(-1));
-        }
+    (void)printf(PRINT_FMT, "(shnum)", (uintmax_t)n);
+    if(elf_getshdrstrndx(e,&n)!=0)
+    {
+        errx(EX_SOFTWARE, "getshdrstrndx() failed: %s.", elf_errmsg(-1));
+    }
 
-        (void)printf(PRINT_FMT, "(shstrndx)", (uintmax_t)n);
+    (void)printf(PRINT_FMT, "(shstrndx)", (uintmax_t)n);
 
-        if(elf_getphdrnum(e,&n)!=0)
-        {
-            errx(EX_SOFTWARE,"getphdrnum()failed:%s.", elf_errmsg(-1));
-        }
+    if(elf_getphdrnum(e,&n)!=0)
+    {
+        errx(EX_SOFTWARE,"getphdrnum()failed:%s.", elf_errmsg(-1));
+    }
 
-        (void)printf(PRINT_FMT, "(phnum)", (uintmax_t)n);
+    (void)printf(PRINT_FMT, "(phnum)", (uintmax_t)n);
 
     elf_end(e);
     close(fp);
@@ -395,8 +520,8 @@ void read_elf_exe_header(char *file_name)
     id = elf_getident(e, NULL);
     ek = elf_kind(e);
 
-#define	PRINT_FMT_EHDR	"   %-20s 0x%jx\n"
-#define	PRINT_FIELD_EHDR(N)	(void)printf(PRINT_FMT_EHDR, #N, (uintmax_t)ehdr.N); //while(0)
+#define PRINT_FMT_EHDR  "   %-20s 0x%jx\n"
+#define PRINT_FIELD_EHDR(N) (void)printf(PRINT_FMT_EHDR, #N, (uintmax_t)ehdr.N); //while(0)
 
 //print ELF executable header
     PRINT_FIELD_EHDR(e_type);
@@ -445,28 +570,28 @@ void print_ptype(size_t pt)
         sent to C(word) and using ## is going to concatenate both strings,
         before and after the ##
         */
-    #define C(V) case PT_##V: s = #V; break
-        switch (pt)
-        {
-            C(NULL);
-            C(LOAD);
-            C(DYNAMIC);
-            C(INTERP);
-            C(NOTE);
-            C(SHLIB);
-            C(PHDR);
-            C(TLS);
-            //C(SUNW_UNWIND); These are suppose to be in elf.h, need to look newest version
-            C(SUNWBSS);
-            C(SUNWSTACK);
-            //C(SUNWDTRACE);
-            //C(SUNWCAP);
-            default:
-                s = "unknown";
-                break;
-        }
-        cout << " \"" << s << " \"";
-    #undef C
+#define C(V) case PT_##V: s = #V; break
+    switch (pt)
+    {
+        C(NULL);
+        C(LOAD);
+        C(DYNAMIC);
+        C(INTERP);
+        C(NOTE);
+        C(SHLIB);
+        C(PHDR);
+        C(TLS);
+        //C(SUNW_UNWIND); These are suppose to be in elf.h, need to look newest version
+        C(SUNWBSS);
+        C(SUNWSTACK);
+        //C(SUNWDTRACE);
+        //C(SUNWCAP);
+    default:
+        s = "unknown";
+        break;
+    }
+    cout << " \"" << s << " \"";
+#undef C
 }
 
 void  read_elf_program_header(char *file_name)
@@ -552,7 +677,7 @@ void elf_check_up(char *file_name)
         printf("Failed to open file...\n");
         return;
     }
-	
+
     if (elf_version(EV_CURRENT) == EV_NONE)
     {
         errx(EX_SOFTWARE, "ELF library init failed %s", elf_errmsg(-1));
@@ -600,166 +725,171 @@ void elf_check_up(char *file_name)
 
 }
 
-int xml_test()
+
+string non_empty_val(string value, string result)
 {
-	xml_document doc;
+
+    if (value.size())
+    {
+        result = value;
+    }
+    return result;
+
+}
+
+
+struct Opcode_info get_optcode(string check_opcode)
+{
+    // Receives a string with the opcode
+    // Returns a struct with opcode information
+    xml_document doc;
     xml_parse_result result;
     xml_document out;
+    Opcode_info myOpcode;
+    string current_opcode; //Tmp string to hold mnmonic name only
+    string tmp; //Tmp string to hold a value of a node/attribute
 
-    ifstream stream("x86reference.xml");
+    ifstream stream("source_code/x86reference.xml");
 
     xml_node outOpcodes = out.append_child();
     outOpcodes.set_name("opcodes");
 
     result = doc.load(stream);
-	if(!result)
+    if(!result)
     {
         cerr << "XML parsing error: " << result.description() << endl;
-        return 1;
+        exit(-1);
     }
 
-	cout << "Load result: " << result.description() << ", x86reference version: " << doc.child("x86reference").attribute("version").value() << endl;  
-    
-  
-   /* Loop over all 1 byte opcodes */
+    //cout << "Load result: " << result.description() << ", x86reference version: " << doc.child("x86reference").attribute("version").value() << endl;
     xml_node opcodes = doc.child("x86reference").child("one-byte");
     for(xml_node priop = opcodes.first_child(); priop; priop = priop.next_sibling())
-     {
-		 cout << "Analyzing opcode: " << priop.attribute("value").value() << endl;
-            /* Loop over all entries for each opcode */
+    {
+        current_opcode = priop.attribute("value").value();
+        if ( check_opcode == current_opcode )
+        {
+            // OK we have found the opcode, now we need to get the data
             for(xml_node entry = priop.first_child(); entry; entry = entry.next_sibling())
             {
-                /* Ignore invalid entries */
-                if(string("invd") == entry.attribute("attr").value() ||
-                   string("undef") == entry.attribute("attr").value() ||
-                   string("null") == entry.attribute("attr").value() ||
-                   string("prefix") == entry.child("grp1").first_child().value())
-                continue;
+                myOpcode.mnemonic = non_empty_val(tmp=entry.child("syntax").child_value("mnem"), myOpcode.mnemonic);
 
-				// <entry direction="0" op_size="0" r="yes" lock="yes">
-				// Debugging information: Not all the opcodes have this attributes
-				// which are in tag <entry>
-				cout << "\tDirection: " << entry.attribute("direction").value();
-				cout << " Op size: " << entry.attribute("op_size").value();
-				cout << " R: " << entry.attribute("r").value();
-				cout << " Lock: " << entry.attribute("lock").value() << endl;
-				
-				// Create a new xml_node based on the next onebyte opcode
-				// And create a primary value named primary, which will save the
-				// optcode value.
-				// Since some op codes have secondary "opcodes" we are going
-				// to create a node to save that informaiton, simarly with 
-				// the extension.
-                xml_node outOp = outOpcodes.append_child();
-                outOp.set_name("op");
-                outOp.append_attribute("primary") = priop.attribute("value").value();
+                // Destination
+                myOpcode.dest_attr.nr = non_empty_val(tmp=entry.child("syntax").child("dst").attribute("nr").value(), myOpcode.dest_attr.nr);
+                myOpcode.dest_attr.group = non_empty_val(tmp=entry.child("syntax").child("dst").attribute("group").value(), myOpcode.dest_attr.group);
+                myOpcode.dest_attr.type = non_empty_val(tmp=entry.child("syntax").child("dst").attribute("type").value(), myOpcode.dest_attr.type);
+                myOpcode.dest_attr.address = non_empty_val(tmp=entry.child("syntax").child("dst").attribute("address").value(), myOpcode.dest_attr.address);
+                myOpcode.dest_attr.displayed = non_empty_val(tmp=entry.child("syntax").child("dst").attribute("displayed").value(), myOpcode.dest_attr.displayed);
+                myOpcode.dest_attr.depend = non_empty_val(tmp=entry.child("syntax").child("dst").attribute("depend").value(), myOpcode.dest_attr.depend);
+                myOpcode.dest_attr.a = non_empty_val(tmp=entry.child("syntax").child("dst").child_value("a"), myOpcode.dest_attr.a);
+                myOpcode.dest_attr.t = non_empty_val(tmp=entry.child("syntax").child("dst").child_value("t"), myOpcode.dest_attr.t);
+                myOpcode.dest_attr.attr = non_empty_val(tmp=entry.child("syntax").child_value("dst"), myOpcode.dest_attr.attr);
 
-                if(entry.child("sec_opcd").first_child())
-                    outOp.append_attribute("secondary") = entry.child("sec_opcd").first_child().value();
+                // SRC
+                myOpcode.src_attr.nr = non_empty_val(tmp=entry.child("syntax").child("src").attribute("nr").value(), myOpcode.src_attr.nr);
+                myOpcode.src_attr.group = non_empty_val(tmp=entry.child("syntax").child("src").attribute("group").value(), myOpcode.src_attr.group);
+                myOpcode.src_attr.type = non_empty_val(tmp=entry.child("syntax").child("src").attribute("type").value(), myOpcode.src_attr.type);
+                myOpcode.src_attr.address = non_empty_val(tmp=entry.child("syntax").child("src").attribute("address").value(), myOpcode.src_attr.address);
+                myOpcode.src_attr.displayed = non_empty_val(tmp=entry.child("syntax").child("src").attribute("displayed").value(), myOpcode.src_attr.displayed);
+                myOpcode.src_attr.a = non_empty_val(tmp=entry.child("syntax").child("src").child_value("a"), myOpcode.src_attr.a);
+                myOpcode.src_attr.t = non_empty_val(tmp=entry.child("syntax").child("src").child_value("t"), myOpcode.src_attr.t);
+                myOpcode.src_attr.attr = non_empty_val(tmp=entry.child("syntax").child_value("src"), myOpcode.src_attr.attr);
 
-                if(entry.child("opcd_ext").first_child())
-                    outOp.append_attribute("extension") = entry.child("opcd_ext").first_child().value();
+				//Entry child values
+                myOpcode.entry_attr.direction = non_empty_val(tmp=entry.attribute("direction").value(), myOpcode.entry_attr.direction);
+                myOpcode.entry_attr.op_size = non_empty_val(tmp=entry.attribute("op_size").value(), myOpcode.entry_attr.op_size);
+                myOpcode.entry_attr.r = non_empty_val(tmp=entry.attribute("r").value(), myOpcode.entry_attr.r);
+                myOpcode.entry_attr.lock = non_empty_val(tmp=entry.attribute("lock").value(), myOpcode.entry_attr.lock);
+                myOpcode.entry_attr.attr = non_empty_val(tmp=entry.attribute("attr").value(), myOpcode.entry_attr.attr);
+                myOpcode.entry_attr.mode = non_empty_val(tmp=entry.attribute("mode").value(), myOpcode.entry_attr.mode);
 
-                string src_type_str;
-                string src_size_str;
-                string dst_type_str;
-                string dst_size_str;
+                myOpcode.prefix = non_empty_val(tmp=entry.child_value("pref"), myOpcode.prefix);
+                myOpcode.sec_opcode = non_empty_val(tmp=entry.child_value("sec_opcd"), myOpcode.sec_opcode);
+                myOpcode.proc_start = non_empty_val(tmp=entry.child_value("proc_start"), myOpcode.proc_start);
+                myOpcode.proc_end = non_empty_val(tmp=entry.child_value("proc_end"), myOpcode.proc_end);
+                myOpcode.instr_ext = non_empty_val(tmp=entry.child("entry").child_value("instr_ext"), myOpcode.instr_ext);
+                
+                //Groups values
+                myOpcode.group1 = non_empty_val(tmp=entry.child_value("grp1"), myOpcode.group1);
+                myOpcode.group2 = non_empty_val(tmp=entry.child_value("grp2"), myOpcode.group2);
+                myOpcode.group3 = non_empty_val(tmp=entry.child_value("grp3"), myOpcode.group3);
 
-                if(entry.child("syntax").child("src").child("a"))
-                {
-                    src_type_str = entry.child("syntax").child("src").child("a").first_child().value();
-                    src_size_str = entry.child("syntax").child("src").child("t").first_child().value();
-                }
+				//Flags values
+                myOpcode.test_f = non_empty_val(tmp=entry.child_value("test_f"), myOpcode.test_f);
+                myOpcode.modif_f = non_empty_val(tmp=entry.child_value("modif_f"), myOpcode.modif_f);
+                myOpcode.def_f = non_empty_val(tmp=entry.child_value("def_f"), myOpcode.def_f);
+                myOpcode.undef_f = non_empty_val(tmp=entry.child_value("undef_f"), myOpcode.undef_f);
+                myOpcode.f_vals = non_empty_val(tmp=entry.child_value("f_vals"), myOpcode.f_vals);
 
-                if(entry.child("syntax").child("dst").child("a"))
-                {
-                    dst_type_str = entry.child("syntax").child("dst").child("a").first_child().value();
-                    dst_size_str = entry.child("syntax").child("dst").child("t").first_child().value();
-                }
+				//FPU Flags values
+                myOpcode.test_f_fpu = non_empty_val(tmp=entry.child_value("test_f_fpu"), myOpcode.test_f_fpu);
+                myOpcode.modif_f_fpu = non_empty_val(tmp=entry.child_value("modif_f_fpu"), myOpcode.modif_f_fpu);
+                myOpcode.def_f_fpu = non_empty_val(tmp=entry.child_value("def_f_fpu"), myOpcode.def_f_fpu);
+                myOpcode.undef_f_fpu = non_empty_val(tmp=entry.child_value("undef_f_fpu"), myOpcode.undef_f_fpu);
+                myOpcode.f_vals_fpu = non_empty_val(tmp=entry.child_value("f_vals_fpu"), myOpcode.f_vals_fpu);
 
-				//cout << src_type_str << src_size_str << dst_type_str << dst_size_str << endl;
-                //outOp.append_attribute("modrm") = GetModrmState(src_type_str, dst_type_str);
-               // pair<int, int> immediate = GetImmediateState(src_type_str, src_size_str, dst_type_str, dst_size_str);
-                //if(immediate.first != 0)
-               // {
-               //     outOp.append_attribute("imm") = immediate.first;
-                //    outOp.append_attribute("imm_size") = immediate.second;
-               // }
+                myOpcode.dst = non_empty_val(tmp=entry.child("syntax").child("dst").value(), myOpcode.dst);
+                myOpcode.src = non_empty_val(tmp=entry.child("syntax").child("src").value(), myOpcode.src);
             }
-    }
+            print_opcode_struct(myOpcode);
+            return myOpcode;
+        }
 
+    }
 }
 
 
 int main(int argc, char *argv[])
 {
-	extern char *optarg;
-	extern int optind, optopt, opterr;
+    extern char *optarg;
+    extern int optind, optopt, opterr;
 
-	unsigned long file_size_bytes = 0;
+    unsigned long file_size_bytes = 0;
     unsigned long file_size_kb = 0;
-	char *filename;
-
-//while ((c = getopt(argc, argv, ":abf:")) != -1) {
-    //switch(c) {
-    //case 'a':
-        //printf("a is set\n");
-        //break;
-    //case 'b':
-        //printf("b is set\n");
-        //break;
-    //case 'f':
-        //filename = optarg;
-        //printf("filename is %s\n", filename);
-        //break;
-    //case ':':
-        //printf("-%c without filename\n", optopt);
-        //break;
-    //case '?':
-        //printf("unknown arg %c\n", optopt);
-        //break;
-    //}
+    char *filename;
+    string opcode;
 
     cout << "*****Ocampo Coronado, Francisco Omar A00354312******" << endl;
     int opt = 0;
     bool show_elf = true;
-	while( ((opt = getopt(argc, argv, "nf:")) != -1)) 
+    while( ((opt = getopt(argc, argv, "nf:o:")) != -1))
     {
-        switch( opt ) 
-        { 
-			case 'n': 
-				show_elf = false;
-				cout << "Not showing elf headers" << endl;
-				break;
-			case 'f':
-				filename = optarg;
-				cout << "File to be analyzed: " << filename << endl;
-		}
-	}
-						
-    
-	//xml_test();
-	//exit(0);
-    // argv[1] = "./disassembler"; //hard coded for now.
-    //check_arguments(argc, argv);
+        switch( opt )
+        {
+        case 'n':
+            show_elf = false;
+            cout << "Not showing elf headers" << endl;
+            break;
+        case 'f':
+            filename = optarg;
+            cout << "File to be analyzed: " << filename << endl;
+        case 'o':
+            opcode = optarg;
+            cout << "Opcode to be analyzed: " << opcode << endl;
+        case '?':
+            cout << "unknown arg " << optopt << endl;
+            break;
+        }
+    }
+
+
     is_binary(filename);
-    //file_size_bytes = get_file_size(argv[1]);
-    //file_size_kb = file_size_bytes/1024;
+    file_size_bytes = get_file_size(argv[1]);
+    file_size_kb = file_size_bytes/1024;
+    //get_optcode(opcode);
+    //exit(0);
+    file_size_limits(file_size_kb);
 
-    //file_size_limits(file_size_kb);
+    printf("The file size of the file provided is (in bytes): %li\n", file_size_bytes);
+    printf("The file size of the file provided is (in KB): %li\n", file_size_kb);
 
-    //printf("The file size of the file provided is (in bytes): %li\n", file_size_bytes);
-    //printf("The file size of the file provided is (in KB): %li\n", file_size_kb);
-
-    //print_binary_file(argv[1], file_size_bytes);
-    //print_binary_file_hex(argv[1], file_size_bytes);
-    if (show_elf) 
+    print_binary_file_hex(filename, file_size_bytes);
+    if (show_elf)
     {
-    elf_check_up(filename);
-    read_file_type_elf(filename);
-    read_elf_exe_header(filename);
-    read_elf_program_header(filename);
-	}
+        elf_check_up(filename);
+        read_file_type_elf(filename);
+        read_elf_exe_header(filename);
+        read_elf_program_header(filename);
+    }
 
     exit(0);
 }

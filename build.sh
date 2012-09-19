@@ -19,5 +19,5 @@ echo "Executing testing..."
 #Generate gcov 
 #gcov ./disassembler.c
 echo "Generating documentation..."
-doxygen Doxyfile > /dev/null 2>&1
+#doxygen Doxyfile > /dev/null 2>&1
 
