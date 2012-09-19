@@ -10,13 +10,13 @@ CFLAGS = -I$(GTEST_DIR)/include/
 all: feature spec
 
 ################################################################################
-#			  INSTALL.PY-TESTS
+#			  FEATURE-TESTS
 ################################################################################
 feature: gtest-all.o feature.cpp
 	$(CC) $(CFLAGS) feature.cpp gtest-all.o -lpthread -o ./disassembler_tests_feature
 
 ################################################################################
-#			  RPMLINT-TESTS
+#			  SPEC-TESTS
 ################################################################################
 spec: gtest-all.o spec.cpp
 	$(CC) $(CFLAGS) spec.cpp gtest-all.o -lpthread -o ./disassembler_tests_spec
