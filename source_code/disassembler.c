@@ -112,6 +112,9 @@ struct Opcode_info
 
 void print_opcode_struct(struct Opcode_info opcode)
 {
+	/*
+	 * Prints a Opcode_info fields
+	 */
     cout << "Mnemonic: " << opcode.mnemonic << endl;
 
     cout << "Entry values: \n\t Direction: " << opcode.entry_attr.direction;
@@ -176,6 +179,13 @@ void print_opcode_struct(struct Opcode_info opcode)
 
 void is_binary(string file)
 {
+	/*
+	 * Using the utility file, verifies if the input file
+	 * is a binary file
+	 * The program will exit returning -1 if the file is not a
+	 * binary or elf file or if the file does not exists
+	 * Returns void otherwise
+	 */
     ifstream my_dataFile;
     string cmd = "file -b -e soft ";
     string output = "";
@@ -371,7 +381,6 @@ void print_binary_file_hex(char *file_name, unsigned long file_size)
 
         /*
           Print the printable characters, or a period if unprintable.
-
         */
         printf (" " );
         counter = 0;
@@ -495,7 +504,8 @@ void read_elf_exe_header(char *file_name)
 {
 
     /*
-    Retrieves the file type as recognized by the elf library.
+     * Reads the executable header of an elf file
+     * print the information
     */
     printf("READ ELF EXECUTABLE HEADER\n");
 
@@ -596,6 +606,9 @@ void print_ptype(size_t pt)
 
 void  read_elf_program_header(char *file_name)
 {
+	/*
+	 * Prints the elf header of the program
+	 */ 
 
     int i, fd;
     Elf *e;
@@ -659,8 +672,7 @@ void  read_elf_program_header(char *file_name)
 void elf_check_up(char *file_name)
 {
     /*
-    Void Function.
-    Receives
+     * Basic sanity tests for libelf
     */
 
     printf("Basic check to elf structs...\n");
@@ -807,7 +819,7 @@ struct Opcode_info get_optcode(string check_opcode)
                 myOpcode.proc_start = non_empty_val(tmp=entry.child_value("proc_start"), myOpcode.proc_start);
                 myOpcode.proc_end = non_empty_val(tmp=entry.child_value("proc_end"), myOpcode.proc_end);
                 myOpcode.instr_ext = non_empty_val(tmp=entry.child("entry").child_value("instr_ext"), myOpcode.instr_ext);
-                
+
                 //Groups values
                 myOpcode.group1 = non_empty_val(tmp=entry.child_value("grp1"), myOpcode.group1);
                 myOpcode.group2 = non_empty_val(tmp=entry.child_value("grp2"), myOpcode.group2);
